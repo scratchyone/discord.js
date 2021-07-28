@@ -6,6 +6,7 @@ const TextBasedChannel = require('./interfaces/TextBasedChannel');
 const { Error } = require('../errors');
 const GuildMemberRoleManager = require('../managers/GuildMemberRoleManager');
 const Permissions = require('../util/Permissions');
+let Structures;
 
 /**
  * Represents a member of a guild on Discord.
@@ -109,6 +110,8 @@ class GuildMember extends Base {
    * @readonly
    */
   get voice() {
+    if (!Structures) Structures = require('../util/Structures');
+    const VoiceState = Structures.get('VoiceState');
     return this.guild.voiceStates.cache.get(this.id) ?? new VoiceState(this.guild, { user_id: this.id });
   }
 
@@ -136,7 +139,17 @@ class GuildMember extends Base {
    * @readonly
    */
   get presence() {
-    return this.guild.presences.resolve(this.id);
+    if (!Structures) Structures = require('../util/Structures');
+    const Presence = Structures.get('Presence');
+    return (
+      this.guild.presences.cache.get(this.id) ??
+      new Presence(this.client, {
+        user: {
+          id: this.id,
+        },
+        guild: this.guild,
+      })
+    );
   }
 
   /**

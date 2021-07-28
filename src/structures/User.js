@@ -6,6 +6,8 @@ const { Error } = require('../errors');
 const SnowflakeUtil = require('../util/SnowflakeUtil');
 const UserFlags = require('../util/UserFlags');
 
+let Structures;
+
 /**
  * Represents a user on Discord.
  * @implements {TextBasedChannel}

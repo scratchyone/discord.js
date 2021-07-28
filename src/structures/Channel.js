@@ -127,14 +127,15 @@ class Channel extends Base {
   }
 
   static create(client, data, guild, { allowUnknownGuild, fromInteraction }) {
+    const Structures = require('../util/Structures');
     if (!CategoryChannel) CategoryChannel = require('./CategoryChannel');
-    if (!DMChannel) DMChannel = require('./DMChannel');
-    if (!NewsChannel) NewsChannel = require('./NewsChannel');
-    if (!StageChannel) StageChannel = require('./StageChannel');
-    if (!StoreChannel) StoreChannel = require('./StoreChannel');
-    if (!TextChannel) TextChannel = require('./TextChannel');
-    if (!ThreadChannel) ThreadChannel = require('./ThreadChannel');
-    if (!VoiceChannel) VoiceChannel = require('./VoiceChannel');
+    if (!DMChannel) DMChannel = Structures.get('DMChannel');
+    if (!NewsChannel) NewsChannel = Structures.get('NewsChannel');
+    if (!StageChannel) StageChannel = Structures.get('StageChannel');
+    if (!StoreChannel) StoreChannel = Structures.get('StoreChannel');
+    if (!TextChannel) TextChannel = Structures.get('TextChannel');
+    if (!ThreadChannel) ThreadChannel = Structures.get('ThreadChannel');
+    if (!VoiceChannel) VoiceChannel = Structures.get('VoiceChannel');
 
     let channel;
     if (!data.guild_id && !guild) {
