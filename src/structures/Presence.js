@@ -1,7 +1,7 @@
 'use strict';
 
 const Base = require('./Base');
-const Emoji = require('./Emoji');
+const { Emoji } = require('./Emoji');
 const ActivityFlags = require('../util/ActivityFlags');
 const { ActivityTypes } = require('../util/Constants');
 const Util = require('../util/Util');
@@ -35,10 +35,6 @@ const Util = require('../util/Util');
  * @extends {Base}
  */
 class Presence extends Base {
-  /**
-   * @param {Client} client The instantiating client
-   * @param {APIPresence} [data={}] The data for the presence
-   */
   constructor(client, data = {}) {
     super(client);
 
@@ -76,26 +72,38 @@ class Presence extends Base {
   }
 
   _patch(data) {
-    /**
-     * The status of this presence
-     * @type {PresenceStatus}
-     */
-    this.status = data.status ?? this.status ?? 'offline';
+    if ('status' in data) {
+      /**
+       * The status of this presence
+       * @type {PresenceStatus}
+       */
+      this.status = data.status;
+    } else {
+      this.status ??= 'offline';
+    }
 
-    /**
-     * The activities of this presence
-     * @type {Activity[]}
-     */
-    this.activities = data.activities?.map(activity => new Activity(this, activity)) ?? [];
+    if ('activities' in data) {
+      /**
+       * The activities of this presence
+       * @type {Activity[]}
+       */
+      this.activities = data.activities.map(activity => new Activity(this, activity));
+    } else {
+      this.activities ??= [];
+    }
 
-    /**
-     * The devices this presence is on
-     * @type {?Object}
-     * @property {?ClientPresenceStatus} web The current presence in the web application
-     * @property {?ClientPresenceStatus} mobile The current presence in the mobile application
-     * @property {?ClientPresenceStatus} desktop The current presence in the desktop application
-     */
-    this.clientStatus = data.client_status ?? null;
+    if ('client_status' in data) {
+      /**
+       * The devices this presence is on
+       * @type {?Object}
+       * @property {?ClientPresenceStatus} web The current presence in the web application
+       * @property {?ClientPresenceStatus} mobile The current presence in the mobile application
+       * @property {?ClientPresenceStatus} desktop The current presence in the desktop application
+       */
+      this.clientStatus = data.client_status;
+    } else {
+      this.clientStatus ??= null;
+    }
 
     return this;
   }
@@ -187,10 +195,15 @@ class Activity {
     this.applicationId = data.application_id ?? null;
 
     /**
-     * Timestamps for the activity
-     * @type {?Object}
+     * Represents timestamps of an activity
+     * @typedef {Object} ActivityTimestamps
      * @property {?Date} start When the activity started
      * @property {?Date} end When the activity will end
+     */
+
+    /**
+     * Timestamps for the activity
+     * @type {?ActivityTimestamps}
      */
     this.timestamps = data.timestamps
       ? {
@@ -212,10 +225,15 @@ class Activity {
     this.platform = data.platform ?? null;
 
     /**
-     * Party of the activity
-     * @type {?Object}
+     * Represents a party of an activity
+     * @typedef {Object} ActivityParty
      * @property {?string} id The party's id
      * @property {number[]} size Size of the party as `[current, max]`
+     */
+
+    /**
+     * Party of the activity
+     * @type {?ActivityParty}
      */
     this.party = data.party ?? null;
 
@@ -329,8 +347,8 @@ class RichPresenceAssets {
 
   /**
    * Gets the URL of the small image asset
-   * @param {StaticImageURLOptions} [options] Options for the image url
-   * @returns {?string} The small image URL
+   * @param {StaticImageURLOptions} [options] Options for the image URL
+   * @returns {?string}
    */
   smallImageURL({ format, size } = {}) {
     return (
@@ -344,8 +362,8 @@ class RichPresenceAssets {
 
   /**
    * Gets the URL of the large image asset
-   * @param {StaticImageURLOptions} [options] Options for the image url
-   * @returns {?string} The large image URL
+   * @param {StaticImageURLOptions} [options] Options for the image URL
+   * @returns {?string}
    */
   largeImageURL({ format, size } = {}) {
     if (!this.largeImage) return null;
@@ -364,9 +382,3 @@ class RichPresenceAssets {
 exports.Presence = Presence;
 exports.Activity = Activity;
 exports.RichPresenceAssets = RichPresenceAssets;
-
-/* eslint-disable max-len */
-/**
- * @external APIPresence
- * @see {@link https://discord.com/developers/docs/rich-presence/how-to#updating-presence-update-presence-payload-fields}
- */

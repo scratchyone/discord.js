@@ -1,7 +1,7 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const Base = require('./Base');
-const Collection = require('../util/Collection');
 
 /**
  * Represents the data about a public {@link StageInstance} in an {@link Invite}.
@@ -33,23 +33,29 @@ class InviteStageInstance extends Base {
   }
 
   _patch(data) {
-    /**
-     * The topic of the stage instance
-     * @type {string}
-     */
-    this.topic = data.topic;
+    if ('topic' in data) {
+      /**
+       * The topic of the stage instance
+       * @type {string}
+       */
+      this.topic = data.topic;
+    }
 
-    /**
-     * The number of users in the stage channel
-     * @type {number}
-     */
-    this.participantCount = data.participant_count;
+    if ('participant_count' in data) {
+      /**
+       * The number of users in the stage channel
+       * @type {number}
+       */
+      this.participantCount = data.participant_count;
+    }
 
-    /**
-     * The number of users speaking in the stage channel
-     * @type {number}
-     */
-    this.speakerCount = data.speaker_count;
+    if ('speaker_count' in data) {
+      /**
+       * The number of users speaking in the stage channel
+       * @type {number}
+       */
+      this.speakerCount = data.speaker_count;
+    }
 
     this.members.clear();
     for (const rawMember of data.members) {

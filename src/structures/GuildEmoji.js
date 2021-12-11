@@ -10,11 +10,6 @@ const Permissions = require('../util/Permissions');
  * @extends {BaseGuildEmoji}
  */
 class GuildEmoji extends BaseGuildEmoji {
-  /**
-   * @param {Client} client The instantiating client
-   * @param {APIEmoji} data The data for the guild emoji
-   * @param {Guild} guild The guild the guild emoji is part of
-   */
   constructor(client, data, guild) {
     super(client, data, guild);
 
@@ -31,6 +26,8 @@ class GuildEmoji extends BaseGuildEmoji {
      * @private
      */
     Object.defineProperty(this, '_roles', { value: [], writable: true });
+
+    this._patch(data);
   }
 
   /**
@@ -107,9 +104,9 @@ class GuildEmoji extends BaseGuildEmoji {
    *   .then(e => console.log(`Edited emoji ${e}`))
    *   .catch(console.error);
    */
-  edit(data, reason) {
+  async edit(data, reason) {
     const roles = data.roles?.map(r => r.id ?? r);
-    return this.client.api
+    const newData = await this.client.api
       .guilds(this.guild.id)
       .emojis(this.id)
       .patch({
@@ -118,12 +115,10 @@ class GuildEmoji extends BaseGuildEmoji {
           roles,
         },
         reason,
-      })
-      .then(newData => {
-        const clone = this._clone();
-        clone._patch(newData);
-        return clone;
       });
+    const clone = this._clone();
+    clone._patch(newData);
+    return clone;
   }
 
   /**
@@ -141,18 +136,15 @@ class GuildEmoji extends BaseGuildEmoji {
    * @param {string} [reason] Reason for deleting the emoji
    * @returns {Promise<GuildEmoji>}
    */
-  delete(reason) {
-    return this.client.api
-      .guilds(this.guild.id)
-      .emojis(this.id)
-      .delete({ reason })
-      .then(() => this);
+  async delete(reason) {
+    await this.client.api.guilds(this.guild.id).emojis(this.id).delete({ reason });
+    return this;
   }
 
   /**
    * Whether this emoji is the same as another one.
    * @param {GuildEmoji|APIEmoji} other The emoji to compare it to
-   * @returns {boolean} Whether the emoji is equal to the given emoji or not
+   * @returns {boolean}
    */
   equals(other) {
     if (other instanceof GuildEmoji) {

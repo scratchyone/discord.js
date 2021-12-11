@@ -1,7 +1,7 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const GuildChannel = require('./GuildChannel');
-const Collection = require('../util/Collection');
 const Permissions = require('../util/Permissions');
 
 /**
@@ -12,23 +12,29 @@ class BaseGuildVoiceChannel extends GuildChannel {
   _patch(data) {
     super._patch(data);
 
-    /**
-     * The RTC region for this voice-based channel. This region is automatically selected if `null`.
-     * @type {?string}
-     */
-    this.rtcRegion = data.rtc_region;
+    if ('rtc_region' in data) {
+      /**
+       * The RTC region for this voice-based channel. This region is automatically selected if `null`.
+       * @type {?string}
+       */
+      this.rtcRegion = data.rtc_region;
+    }
 
-    /**
-     * The bitrate of this voice-based channel
-     * @type {number}
-     */
-    this.bitrate = data.bitrate;
+    if ('bitrate' in data) {
+      /**
+       * The bitrate of this voice-based channel
+       * @type {number}
+       */
+      this.bitrate = data.bitrate;
+    }
 
-    /**
-     * The maximum amount of users allowed in this channel.
-     * @type {number}
-     */
-    this.userLimit = data.user_limit;
+    if ('user_limit' in data) {
+      /**
+       * The maximum amount of users allowed in this channel.
+       * @type {number}
+       */
+      this.userLimit = data.user_limit;
+    }
   }
 
   /**
@@ -79,6 +85,30 @@ class BaseGuildVoiceChannel extends GuildChannel {
    */
   setRTCRegion(region) {
     return this.edit({ rtcRegion: region });
+  }
+
+  /**
+   * Creates an invite to this guild channel.
+   * @param {CreateInviteOptions} [options={}] The options for creating the invite
+   * @returns {Promise<Invite>}
+   * @example
+   * // Create an invite to a channel
+   * channel.createInvite()
+   *   .then(invite => console.log(`Created an invite with a code of ${invite.code}`))
+   *   .catch(console.error);
+   */
+  createInvite(options) {
+    return this.guild.invites.create(this.id, options);
+  }
+
+  /**
+   * Fetches a collection of invites to this guild channel.
+   * Resolves with a collection mapping invites by their codes.
+   * @param {boolean} [cache=true] Whether or not to cache the fetched invites
+   * @returns {Promise<Collection<string, Invite>>}
+   */
+  fetchInvites(cache = true) {
+    return this.guild.invites.fetch({ channelId: this.id, cache });
   }
 }
 

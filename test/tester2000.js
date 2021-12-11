@@ -12,6 +12,14 @@ const client = new Client({
   makeCache: Options.cacheWithLimits({
     MessageManager: 10,
     PresenceManager: 10,
+    UserManager: {
+      maxSize: 1,
+      keepOverLimit: v => v.id === client.user.id,
+    },
+    GuildMemberManager: {
+      maxSize: 1,
+      keepOverLimit: v => v.id === client.user.id,
+    },
   }),
 });
 
@@ -28,7 +36,7 @@ const commands = {
     let res;
     try {
       res = eval(message.content);
-      if (typeof res !== 'string') res = require('util').inspect(res);
+      if (typeof res !== 'string') res = require('node:util').inspect(res);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(err.stack);

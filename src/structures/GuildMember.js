@@ -1,6 +1,7 @@
 'use strict';
 
 const Base = require('./Base');
+// eslint-disable-next-line no-unused-vars
 const VoiceState = require('./VoiceState');
 const TextBasedChannel = require('./interfaces/TextBasedChannel');
 const { Error } = require('../errors');
@@ -9,16 +10,18 @@ const Permissions = require('../util/Permissions');
 let Structures;
 
 /**
+ * @type {WeakSet<GuildMember>}
+ * @private
+ * @internal
+ */
+const deletedGuildMembers = new WeakSet();
+
+/**
  * Represents a member of a guild on Discord.
  * @implements {TextBasedChannel}
  * @extends {Base}
  */
 class GuildMember extends Base {
-  /**
-   * @param {Client} client The instantiating client
-   * @param {APIGuildMember} data The data for the guild member
-   * @param {Guild} guild The guild the member is part of
-   */
   constructor(client, data, guild) {
     super(client);
 
@@ -35,16 +38,10 @@ class GuildMember extends Base {
     this.joinedTimestamp = null;
 
     /**
-     * The timestamp of when the member used their Nitro boost on the guild, if it was used
+     * The last timestamp this member started boosting the guild
      * @type {?number}
      */
     this.premiumSinceTimestamp = null;
-
-    /**
-     * Whether the member has been removed from the guild
-     * @type {boolean}
-     */
-    this.deleted = false;
 
     /**
      * The nickname of this member, if they have one
@@ -72,6 +69,15 @@ class GuildMember extends Base {
     }
 
     if ('nick' in data) this.nickname = data.nick;
+    if ('avatar' in data) {
+      /**
+       * The guild member's avatar hash
+       * @type {?string}
+       */
+      this.avatar = data.avatar;
+    } else if (typeof this.avatar !== 'string') {
+      this.avatar = null;
+    }
     if ('joined_at' in data) this.joinedTimestamp = new Date(data.joined_at).getTime();
     if ('premium_since' in data) {
       this.premiumSinceTimestamp = data.premium_since ? new Date(data.premium_since).getTime() : null;
@@ -87,12 +93,25 @@ class GuildMember extends Base {
   }
 
   /**
+   * Whether or not the structure has been deleted
+   * @type {boolean}
+   */
+  get deleted() {
+    return deletedGuildMembers.has(this);
+  }
+
+  set deleted(value) {
+    if (value) deletedGuildMembers.add(this);
+    else deletedGuildMembers.delete(this);
+  }
+
+  /**
    * Whether this GuildMember is a partial
    * @type {boolean}
    * @readonly
    */
   get partial() {
-    return !this.joinedTimestamp;
+    return this.joinedTimestamp === null;
   }
 
   /**
@@ -111,8 +130,29 @@ class GuildMember extends Base {
    */
   get voice() {
     if (!Structures) Structures = require('../util/Structures');
+    // eslint-disable-next-line no-shadow
     const VoiceState = Structures.get('VoiceState');
     return this.guild.voiceStates.cache.get(this.id) ?? new VoiceState(this.guild, { user_id: this.id });
+  }
+
+  /**
+   * A link to the member's guild avatar.
+   * @param {ImageURLOptions} [options={}] Options for the Image URL
+   * @returns {?string}
+   */
+  avatarURL({ format, size, dynamic } = {}) {
+    if (!this.avatar) return null;
+    return this.client.rest.cdn.GuildMemberAvatar(this.guild.id, this.id, this.avatar, format, size, dynamic);
+  }
+
+  /**
+   * A link to the member's guild avatar if they have one.
+   * Otherwise, a link to their {@link User#displayAvatarURL} will be returned.
+   * @param {ImageURLOptions} [options={}] Options for the Image URL
+   * @returns {string}
+   */
+  displayAvatarURL(options) {
+    return this.avatarURL(options) ?? this.user.displayAvatarURL(options);
   }
 
   /**
@@ -125,7 +165,7 @@ class GuildMember extends Base {
   }
 
   /**
-   * The time of when the member used their Nitro boost on the guild, if it was used
+   * The last time this member started boosting the guild
    * @type {?Date}
    * @readonly
    */
@@ -249,8 +289,8 @@ class GuildMember extends Base {
    * @property {Collection<Snowflake, Role>|RoleResolvable[]} [roles] The roles or role ids to apply
    * @property {boolean} [mute] Whether or not the member should be muted
    * @property {boolean} [deaf] Whether or not the member should be deafened
-   * @property {ChannelResolvable|null} [channel] Channel to move member to (if they are connected to voice), or `null`
-   * if you want to kick them from voice
+   * @property {GuildVoiceChannelResolvable|null} [channel] Channel to move the member to
+   * (if they are connected to voice), or `null` if you want to disconnect them from voice
    */
 
   /**
@@ -336,6 +376,7 @@ class GuildMember extends Base {
       this.guild.id === member.guild.id &&
       this.joinedTimestamp === member.joinedTimestamp &&
       this.nickname === member.nickname &&
+      this.avatar === member.avatar &&
       this.pending === member.pending &&
       (this._roles === member._roles ||
         (this._roles.length === member._roles.length && this._roles.every((role, i) => role === member._roles[i])))
@@ -354,12 +395,15 @@ class GuildMember extends Base {
   }
 
   toJSON() {
-    return super.toJSON({
+    const json = super.toJSON({
       guild: 'guildId',
       user: 'userId',
       displayName: true,
       roles: true,
     });
+    json.avatarURL = this.avatarURL();
+    json.displayAvatarURL = this.displayAvatarURL();
+    return json;
   }
 
   // These are here only for documentation purposes - they are implemented by TextBasedChannel
@@ -369,7 +413,8 @@ class GuildMember extends Base {
 
 TextBasedChannel.applyToClass(GuildMember);
 
-module.exports = GuildMember;
+exports.GuildMember = GuildMember;
+exports.deletedGuildMembers = deletedGuildMembers;
 
 /**
  * @external APIGuildMember

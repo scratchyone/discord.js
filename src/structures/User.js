@@ -6,18 +6,12 @@ const { Error } = require('../errors');
 const SnowflakeUtil = require('../util/SnowflakeUtil');
 const UserFlags = require('../util/UserFlags');
 
-let Structures;
-
 /**
  * Represents a user on Discord.
  * @implements {TextBasedChannel}
  * @extends {Base}
  */
 class User extends Base {
-  /**
-   * @param {Client} client The instantiating client
-   * @param {APIUser} data The data for the user
-   */
   constructor(client, data) {
     super(client);
 
@@ -43,8 +37,8 @@ class User extends Base {
        * @type {?string}
        */
       this.username = data.username;
-    } else if (typeof this.username !== 'string') {
-      this.username = null;
+    } else {
+      this.username ??= null;
     }
 
     if ('bot' in data) {
@@ -63,8 +57,8 @@ class User extends Base {
        * @type {?string}
        */
       this.discriminator = data.discriminator;
-    } else if (typeof this.discriminator !== 'string') {
-      this.discriminator = null;
+    } else {
+      this.discriminator ??= null;
     }
 
     if ('avatar' in data) {
@@ -73,8 +67,30 @@ class User extends Base {
        * @type {?string}
        */
       this.avatar = data.avatar;
-    } else if (typeof this.avatar !== 'string') {
-      this.avatar = null;
+    } else {
+      this.avatar ??= null;
+    }
+
+    if ('banner' in data) {
+      /**
+       * The user banner's hash
+       * <info>The user must be force fetched for this property to be present or be updated</info>
+       * @type {?string}
+       */
+      this.banner = data.banner;
+    } else if (this.banner !== null) {
+      this.banner ??= undefined;
+    }
+
+    if ('accent_color' in data) {
+      /**
+       * The base 10 accent color of the user's banner
+       * <info>The user must be force fetched for this property to be present or be updated</info>
+       * @type {?number}
+       */
+      this.accentColor = data.accent_color;
+    } else if (this.accentColor !== null) {
+      this.accentColor ??= undefined;
     }
 
     if ('system' in data) {
@@ -111,7 +127,7 @@ class User extends Base {
    * @readonly
    */
   get createdTimestamp() {
-    return SnowflakeUtil.deconstruct(this.id).timestamp;
+    return SnowflakeUtil.timestampFrom(this.id);
   }
 
   /**
@@ -150,6 +166,30 @@ class User extends Base {
    */
   displayAvatarURL(options) {
     return this.avatarURL(options) ?? this.defaultAvatarURL;
+  }
+
+  /**
+   * The hexadecimal version of the user accent color, with a leading hash
+   * <info>The user must be force fetched for this property to be present</info>
+   * @type {?string}
+   * @readonly
+   */
+  get hexAccentColor() {
+    if (typeof this.accentColor !== 'number') return this.accentColor;
+    return `#${this.accentColor.toString(16).padStart(6, '0')}`;
+  }
+
+  /**
+   * A link to the user's banner.
+   * <info>This method will throw an error if called before the user is force fetched.
+   * See {@link User#banner} for more info</info>
+   * @param {ImageURLOptions} [options={}] Options for the Image URL
+   * @returns {?string}
+   */
+  bannerURL({ format, size, dynamic } = {}) {
+    if (typeof this.banner === 'undefined') throw new Error('USER_BANNER_NOT_FETCHED');
+    if (!this.banner) return null;
+    return this.client.rest.cdn.Banner(this.id, this.banner, format, size, dynamic);
   }
 
   /**
@@ -195,27 +235,49 @@ class User extends Base {
    */
   async deleteDM() {
     const { dmChannel } = this;
-    if (!dmChannel) throw new Error('USER_NO_DMCHANNEL');
+    if (!dmChannel) throw new Error('USER_NO_DM_CHANNEL');
     await this.client.api.channels(dmChannel.id).delete();
     this.client.channels._remove(dmChannel.id);
     return dmChannel;
   }
 
   /**
-   * Checks if the user is equal to another. It compares id, username, discriminator, avatar, and bot flags.
+   * Checks if the user is equal to another.
+   * It compares id, username, discriminator, avatar, banner, accent color, and bot flags.
    * It is recommended to compare equality by using `user.id === user2.id` unless you want to compare all properties.
    * @param {User} user User to compare with
    * @returns {boolean}
    */
   equals(user) {
-    let equal =
+    return (
       user &&
       this.id === user.id &&
       this.username === user.username &&
       this.discriminator === user.discriminator &&
-      this.avatar === user.avatar;
+      this.avatar === user.avatar &&
+      this.flags?.bitfield === user.flags?.bitfield &&
+      this.banner === user.banner &&
+      this.accentColor === user.accentColor
+    );
+  }
 
-    return equal;
+  /**
+   * Compares the user with an API user object
+   * @param {APIUser} user The API user object to compare
+   * @returns {boolean}
+   * @private
+   */
+  _equals(user) {
+    return (
+      user &&
+      this.id === user.id &&
+      this.username === user.username &&
+      this.discriminator === user.discriminator &&
+      this.avatar === user.avatar &&
+      this.flags?.bitfield === user.public_flags &&
+      ('banner' in user ? this.banner === user.banner : true) &&
+      ('accent_color' in user ? this.accentColor === user.accent_color : true)
+    );
   }
 
   /**
@@ -255,12 +317,14 @@ class User extends Base {
       {
         createdTimestamp: true,
         defaultAvatarURL: true,
+        hexAccentColor: true,
         tag: true,
       },
       ...props,
     );
     json.avatarURL = this.avatarURL();
     json.displayAvatarURL = this.displayAvatarURL();
+    json.bannerURL = this.banner ? this.bannerURL() : this.banner;
     return json;
   }
 

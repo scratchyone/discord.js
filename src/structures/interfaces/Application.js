@@ -23,23 +23,35 @@ class Application extends Base {
      */
     this.id = data.id;
 
-    /**
-     * The name of the application
-     * @type {?string}
-     */
-    this.name = data.name ?? this.name ?? null;
+    if ('name' in data) {
+      /**
+       * The name of the application
+       * @type {?string}
+       */
+      this.name = data.name;
+    } else {
+      this.name ??= null;
+    }
 
-    /**
-     * The application's description
-     * @type {?string}
-     */
-    this.description = data.description ?? this.description ?? null;
+    if ('description' in data) {
+      /**
+       * The application's description
+       * @type {?string}
+       */
+      this.description = data.description;
+    } else {
+      this.description ??= null;
+    }
 
-    /**
-     * The application's icon hash
-     * @type {?string}
-     */
-    this.icon = data.icon ?? this.icon ?? null;
+    if ('icon' in data) {
+      /**
+       * The application's icon hash
+       * @type {?string}
+       */
+      this.icon = data.icon;
+    } else {
+      this.icon ??= null;
+    }
   }
 
   /**
@@ -48,7 +60,7 @@ class Application extends Base {
    * @readonly
    */
   get createdTimestamp() {
-    return SnowflakeUtil.deconstruct(this.id).timestamp;
+    return SnowflakeUtil.timestampFrom(this.id);
   }
 
   /**
@@ -63,7 +75,7 @@ class Application extends Base {
   /**
    * A link to the application's icon.
    * @param {StaticImageURLOptions} [options={}] Options for the Image URL
-   * @returns {?string} URL to the icon
+   * @returns {?string}
    */
   iconURL({ format, size } = {}) {
     if (!this.icon) return null;
@@ -73,7 +85,7 @@ class Application extends Base {
   /**
    * A link to this application's cover image.
    * @param {StaticImageURLOptions} [options={}] Options for the Image URL
-   * @returns {?string} URL to the cover image
+   * @returns {?string}
    */
   coverURL({ format, size } = {}) {
     if (!this.cover) return null;
@@ -92,22 +104,18 @@ class Application extends Base {
    * Gets the application's rich presence assets.
    * @returns {Promise<Array<ApplicationAsset>>}
    */
-  fetchAssets() {
-    return this.client.api.oauth2
-      .applications(this.id)
-      .assets.get()
-      .then(assets =>
-        assets.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: AssetTypes[a.type - 1],
-        })),
-      );
+  async fetchAssets() {
+    const assets = await this.client.api.oauth2.applications(this.id).assets.get();
+    return assets.map(a => ({
+      id: a.id,
+      name: a.name,
+      type: AssetTypes[a.type - 1],
+    }));
   }
 
   /**
    * When concatenated with a string, this automatically returns the application's name instead of the
-   * Oauth2Application object.
+   * Application object.
    * @returns {?string}
    * @example
    * // Logs: Application name: My App

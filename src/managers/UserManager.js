@@ -1,8 +1,8 @@
 'use strict';
 
 const CachedManager = require('./CachedManager');
-const GuildMember = require('../structures/GuildMember');
-const Message = require('../structures/Message');
+const { GuildMember } = require('../structures/GuildMember');
+const { Message } = require('../structures/Message');
 const ThreadMember = require('../structures/ThreadMember');
 const User = require('../structures/User');
 
@@ -56,11 +56,12 @@ class UserManager extends CachedManager {
 
   /**
    * Obtains a user from Discord, or the user cache if it's already available.
-   * @param {Snowflake} id The user's id
+   * @param {UserResolvable} user The user to fetch
    * @param {BaseFetchOptions} [options] Additional options for this fetch
    * @returns {Promise<User>}
    */
-  async fetch(id, { cache = true, force = false } = {}) {
+  async fetch(user, { cache = true, force = false } = {}) {
+    const id = this.resolveId(user);
     if (!force) {
       const existing = this.cache.get(id);
       if (existing && !existing.partial) return existing;

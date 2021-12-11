@@ -5,7 +5,7 @@
  * @typedef {Object} RateLimitData
  * @property {number} timeout Time until this rate limit ends, in ms
  * @property {number} limit The maximum amount of requests of this endpoint
- * @property {string} method The http method of this request
+ * @property {string} method The HTTP method of this request
  * @property {string} path The path of the request relative to the HTTP endpoint
  * @property {string} route The route of the request relative to the HTTP endpoint
  * @property {boolean} global Whether this is a global rate limit
@@ -35,10 +35,13 @@
  * (e.g. recommended shard count, shard count of the ShardingManager)
  * @property {CacheFactory} [makeCache] Function to create a cache.
  * You can use your own function, or the {@link Options} class to customize the Collection used for the cache.
- * @property {number} [messageCacheLifetime=0] How long a message should stay in the cache until it is considered
- * sweepable (in seconds, 0 for forever)
- * @property {number} [messageSweepInterval=0] How frequently to remove messages from the cache that are older than
- * the message cache lifetime (in seconds, 0 for never)
+ * <warn>Overriding the cache used in `GuildManager`, `ChannelManager`, `GuildChannelManager`, `RoleManager`,
+ * and `PermissionOverwriteManager` is unsupported and **will** break functionality</warn>
+ * @property {number} [messageCacheLifetime=0] DEPRECATED: Use `makeCache` with a `LimitedCollection` instead.
+ * How long a message should stay in the cache until it is considered sweepable (in seconds, 0 for forever)
+ * @property {number} [messageSweepInterval=0] DEPRECATED: Use `makeCache` with a `LimitedCollection` instead.
+ * How frequently to remove messages from the cache that are older than the message cache lifetime
+ * (in seconds, 0 for never)
  * @property {MessageMentionOptions} [allowedMentions] Default value for {@link MessageOptions#allowedMentions}
  * @property {number} [invalidRequestWarningInterval=0] The number of invalid REST requests (those that return
  * 401, 403, or 429) in a 10 minute window between emitted warnings (0 for no warnings). That is, if set to 500,
@@ -48,7 +51,7 @@
  * [guide](https://discordjs.guide/popular-topics/partials.html) for some
  * important usage information, as partials require you to put checks in place when handling data.
  * @property {number} [restWsBridgeTimeout=5000] Maximum time permitted between REST responses and their
- * corresponding websocket events
+ * corresponding WebSocket events
  * @property {number} [restTimeOffset=500] Extra time in milliseconds to wait before continuing to make REST
  * requests (higher values will reduce rate-limiting errors on bad connections)
  * @property {number} [restRequestTimeout=15000] Time to wait before cancelling a REST request, in milliseconds
@@ -60,7 +63,8 @@
  * should be handled. If this option is an array containing the prefix of the request route (e.g. /channels to match any
  * route starting with /channels, such as /channels/222197033908436994/messages) or a function returning true, a
  * {@link RateLimitError} will be thrown. Otherwise the request will be queued for later
- * @property {number} [retryLimit=1] How many times to retry on 5XX errors (Infinity for indefinite amount of retries)
+ * @property {number} [retryLimit=1] How many times to retry on 5XX errors
+ * (Infinity for an indefinite amount of retries)
  * @property {boolean} [failIfNotExists=true] Default value for {@link ReplyMessageOptions#failIfNotExists}
  * @property {string[]} [userAgentSuffix] An array of additional bot info to be appended to the end of the required
  * [User Agent](https://discord.com/developers/docs/reference#user-agent) header
@@ -78,13 +82,21 @@
  */
 
 /**
+ * HTTPS Agent options.
+ * @typedef {Object} AgentOptions
+ * @see {@link https://nodejs.org/api/https.html#https_class_https_agent}
+ * @see {@link https://nodejs.org/api/http.html#http_new_agent_options}
+ */
+
+/**
  * HTTP options
  * @typedef {Object} HTTPOptions
  * @property {number} [version=9] API version to use
- * @property {string} [api='https://discord.com/api'] Base url of the API
- * @property {string} [cdn='https://cdn.discordapp.com'] Base url of the CDN
- * @property {string} [invite='https://discord.gg'] Base url of invites
- * @property {string} [template='https://discord.new'] Base url of templates
+ * @property {AgentOptions} [agent={}] HTTPS Agent options
+ * @property {string} [api='https://discord.com/api'] Base URL of the API
+ * @property {string} [cdn='https://cdn.discordapp.com'] Base URL of the CDN
+ * @property {string} [invite='https://discord.gg'] Base URL of invites
+ * @property {string} [template='https://discord.new'] Base URL of templates
  * @property {Object} [headers] Additional headers to send for all API requests
  */
 
@@ -99,13 +111,13 @@ class Options extends null {
   static createDefault() {
     return {
       shardCount: 1,
-      makeCache: this.cacheWithLimits({ MessageManager: 200 }),
+      makeCache: this.cacheWithLimits(this.defaultMakeCacheSettings),
       messageCacheLifetime: 0,
       messageSweepInterval: 0,
       invalidRequestWarningInterval: 0,
       partials: [],
-      restWsBridgeTimeout: 5000,
-      restRequestTimeout: 15000,
+      restWsBridgeTimeout: 5_000,
+      restRequestTimeout: 15_000,
       restGlobalRateLimit: 0,
       retryLimit: 1,
       restTimeOffset: 500,
@@ -124,6 +136,7 @@ class Options extends null {
         version: 9,
       },
       http: {
+        agent: {},
         version: 9,
         api: 'https://discord.com/api',
         cdn: 'https://cdn.discordapp.com',
@@ -134,20 +147,68 @@ class Options extends null {
   }
 
   /**
-   * Create a cache factory using predefined limits.
-   * @param {Record<string, number>} [limits={}] Limits for structures.
+   * Create a cache factory using predefined settings to sweep or limit.
+   * @param {Object<string, LimitedCollectionOptions|number>} [settings={}] Settings passed to the relevant constructor.
+   * If no setting is provided for a manager, it uses Collection.
+   * If a number is provided for a manager, it uses that number as the max size for a LimitedCollection.
+   * If LimitedCollectionOptions are provided for a manager, it uses those settings to form a LimitedCollection.
    * @returns {CacheFactory}
+   * @example
+   * // Store up to 200 messages per channel and discard archived threads if they were archived more than 4 hours ago.
+   * // Note archived threads will remain in the guild and client caches with these settings
+   * Options.cacheWithLimits({
+   *    MessageManager: 200,
+   *    ThreadManager: {
+   *      sweepInterval: 3600,
+   *      sweepFilter: LimitedCollection.filterByLifetime({
+   *        getComparisonTimestamp: e => e.archiveTimestamp,
+   *        excludeFromSweep: e => !e.archived,
+   *      }),
+   *    },
+   *  });
+   * @example
+   * // Sweep messages every 5 minutes, removing messages that have not been edited or created in the last 30 minutes
+   * Options.cacheWithLimits({
+   *   // Keep default thread sweeping behavior
+   *   ...Options.defaultMakeCacheSettings,
+   *   // Override MessageManager
+   *   MessageManager: {
+   *     sweepInterval: 300,
+   *     sweepFilter: LimitedCollection.filterByLifetime({
+   *       lifetime: 1800,
+   *       getComparisonTimestamp: e => e.editedTimestamp ?? e.createdTimestamp,
+   *     })
+   *   }
+   * });
    */
-  static cacheWithLimits(limits = {}) {
-    const Collection = require('./Collection');
+  static cacheWithLimits(settings = {}) {
+    const { Collection } = require('@discordjs/collection');
     const LimitedCollection = require('./LimitedCollection');
 
     return manager => {
-      const limit = limits[manager.name];
-      if (limit === null || limit === undefined || limit === Infinity) {
+      const setting = settings[manager.name];
+      /* eslint-disable-next-line eqeqeq */
+      if (setting == null) {
         return new Collection();
       }
-      return new LimitedCollection(limit);
+      if (typeof setting === 'number') {
+        if (setting === Infinity) {
+          return new Collection();
+        }
+        return new LimitedCollection({ maxSize: setting });
+      }
+      /* eslint-disable eqeqeq */
+      const noSweeping =
+        setting.sweepFilter == null ||
+        setting.sweepInterval == null ||
+        setting.sweepInterval <= 0 ||
+        setting.sweepInterval === Infinity;
+      const noLimit = setting.maxSize == null || setting.maxSize === Infinity;
+      /* eslint-enable eqeqeq */
+      if (noSweeping && noLimit) {
+        return new Collection();
+      }
+      return new LimitedCollection(setting);
     };
   }
 
@@ -156,8 +217,37 @@ class Options extends null {
    * @returns {CacheFactory}
    */
   static cacheEverything() {
-    const Collection = require('./Collection');
+    const { Collection } = require('@discordjs/collection');
     return () => new Collection();
+  }
+
+  /**
+   * The default settings passed to {@link Options.cacheWithLimits}.
+   * The caches that this changes are:
+   * * `MessageManager` - Limit to 200 messages
+   * * `ChannelManager` - Sweep archived threads
+   * * `GuildChannelManager` - Sweep archived threads
+   * * `ThreadManager` - Sweep archived threads
+   * <info>If you want to keep default behavior and add on top of it you can use this object and add on to it, e.g.
+   * `makeCache: Options.cacheWithLimits({ ...Options.defaultMakeCacheSettings, ReactionManager: 0 })`</info>
+   * @type {Object<string, LimitedCollectionOptions|number>}
+   */
+  static get defaultMakeCacheSettings() {
+    return {
+      MessageManager: 200,
+      ChannelManager: {
+        sweepInterval: 3600,
+        sweepFilter: require('./Util').archivedThreadSweepFilter(),
+      },
+      GuildChannelManager: {
+        sweepInterval: 3600,
+        sweepFilter: require('./Util').archivedThreadSweepFilter(),
+      },
+      ThreadManager: {
+        sweepInterval: 3600,
+        sweepFilter: require('./Util').archivedThreadSweepFilter(),
+      },
+    };
   }
 }
 

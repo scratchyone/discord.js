@@ -1,8 +1,8 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const BaseGuildEmojiManager = require('./BaseGuildEmojiManager');
 const { TypeError } = require('../errors');
-const Collection = require('../util/Collection');
 const DataResolver = require('../util/DataResolver');
 
 /**
@@ -38,7 +38,7 @@ class GuildEmojiManager extends BaseGuildEmojiManager {
    * @param {GuildEmojiCreateOptions} [options] Options for creating the emoji
    * @returns {Promise<Emoji>} The created emoji
    * @example
-   * // Create a new emoji from a url
+   * // Create a new emoji from a URL
    * guild.emojis.create('https://i.imgur.com/w3duR07.png', 'rip')
    *   .then(emoji => console.log(`Created new emoji with name ${emoji.name}!`))
    *   .catch(console.error);
@@ -65,10 +65,8 @@ class GuildEmojiManager extends BaseGuildEmojiManager {
       }
     }
 
-    return this.client.api
-      .guilds(this.guild.id)
-      .emojis.post({ data, reason })
-      .then(emoji => this.client.actions.GuildEmojiCreate.handle(this.guild, emoji).emoji);
+    const emoji = await this.client.api.guilds(this.guild.id).emojis.post({ data, reason });
+    return this.client.actions.GuildEmojiCreate.handle(this.guild, emoji).emoji;
   }
 
   /**

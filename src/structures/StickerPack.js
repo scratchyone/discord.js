@@ -1,8 +1,8 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const Base = require('./Base');
-const Sticker = require('./Sticker');
-const Collection = require('../util/Collection');
+const { Sticker } = require('./Sticker');
 const SnowflakeUtil = require('../util/SnowflakeUtil');
 
 /**
@@ -10,10 +10,6 @@ const SnowflakeUtil = require('../util/SnowflakeUtil');
  * @extends {Base}
  */
 class StickerPack extends Base {
-  /**
-   * @param {Client} client The instantiating client
-   * @param {APIStickerPack} pack The data for the sticker pack
-   */
   constructor(client, pack) {
     super(client);
     /**
@@ -65,7 +61,7 @@ class StickerPack extends Base {
    * @readonly
    */
   get createdTimestamp() {
-    return SnowflakeUtil.deconstruct(this.id).timestamp;
+    return SnowflakeUtil.timestampFrom(this.id);
   }
 
   /**
@@ -97,8 +93,3 @@ class StickerPack extends Base {
 }
 
 module.exports = StickerPack;
-
-/**
- * @external APIStickerPack
- * @see {@link https://discord.com/developers/docs/resources/sticker#sticker-pack-object}
- */

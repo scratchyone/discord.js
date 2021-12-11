@@ -1,6 +1,6 @@
 'use strict';
 
-const EventEmitter = require('events');
+const EventEmitter = require('node:events');
 const WebSocket = require('../../WebSocket');
 const { Status, Events, ShardEvents, Opcodes, WSEvents } = require('../../util/Constants');
 const Intents = require('../../util/Intents');
@@ -415,7 +415,7 @@ class WebSocketShard extends EventEmitter {
         break;
       case Opcodes.RECONNECT:
         this.debug('[RECONNECT] Discord asked us to reconnect');
-        this.destroy({ closeCode: 4000 });
+        this.destroy({ closeCode: 4_000 });
         break;
       case Opcodes.INVALID_SESSION:
         this.debug(`[INVALID SESSION] Resumable: ${packet.d}.`);
@@ -474,22 +474,28 @@ class WebSocketShard extends EventEmitter {
       this.emit(ShardEvents.ALL_READY);
       return;
     }
+    const hasGuildsIntent = new Intents(this.manager.client.options.intents).has(Intents.FLAGS.GUILDS);
     // Step 2. Create a 15s timeout that will mark the shard as ready if there are still unavailable guilds
-    this.readyTimeout = setTimeout(() => {
-      this.debug(`Shard did not receive any more guild packets in 15 seconds.
-  Unavailable guild count: ${this.expectedGuilds.size}`);
+    this.readyTimeout = setTimeout(
+      () => {
+        this.debug(
+          `Shard ${hasGuildsIntent ? 'did' : 'will'} not receive any more guild packets` +
+            `${hasGuildsIntent ? ' in 15 seconds' : ''}.\n   Unavailable guild count: ${this.expectedGuilds.size}`,
+        );
 
-      this.readyTimeout = null;
+        this.readyTimeout = null;
 
-      this.status = Status.READY;
+        this.status = Status.READY;
 
-      this.emit(ShardEvents.ALL_READY, this.expectedGuilds);
-    }, 15000).unref();
+        this.emit(ShardEvents.ALL_READY, this.expectedGuilds);
+      },
+      hasGuildsIntent ? 15_000 : 0,
+    ).unref();
   }
 
   /**
    * Sets the HELLO packet timeout.
-   * @param {number} [time] If set to -1, it will clear the hello timeout timeout
+   * @param {number} [time] If set to -1, it will clear the hello timeout
    * @private
    */
   setHelloTimeout(time) {
@@ -505,7 +511,7 @@ class WebSocketShard extends EventEmitter {
     this.helloTimeout = setTimeout(() => {
       this.debug('Did not receive HELLO in time. Destroying and connecting again.');
       this.destroy({ reset: true, closeCode: 4009 });
-    }, 20000).unref();
+    }, 20_000).unref();
   }
 
   /**
@@ -650,7 +656,7 @@ class WebSocketShard extends EventEmitter {
   _send(data) {
     if (this.connection?.readyState !== WebSocket.OPEN) {
       this.debug(`Tried to send packet '${JSON.stringify(data)}' but no WebSocket is available!`);
-      this.destroy({ closeCode: 4000 });
+      this.destroy({ closeCode: 4_000 });
       return;
     }
 
@@ -686,7 +692,7 @@ class WebSocketShard extends EventEmitter {
    * @param {Object} [options={ closeCode: 1000, reset: false, emit: true, log: true }] Options for destroying the shard
    * @private
    */
-  destroy({ closeCode = 1000, reset = false, emit = true, log = true } = {}) {
+  destroy({ closeCode = 1_000, reset = false, emit = true, log = true } = {}) {
     if (log) {
       this.debug(`[DESTROY]
     Close Code    : ${closeCode}
@@ -737,7 +743,7 @@ class WebSocketShard extends EventEmitter {
       this.sessionId = null;
     }
 
-    // Step 6: reset the ratelimit data
+    // Step 6: reset the rate limit data
     this.ratelimit.remaining = this.ratelimit.total;
     this.ratelimit.queue.length = 0;
     if (this.ratelimit.timer) {

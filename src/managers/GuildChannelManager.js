@@ -1,12 +1,16 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const CachedManager = require('./CachedManager');
+const ThreadManager = require('./ThreadManager');
 const { Error } = require('../errors');
 const GuildChannel = require('../structures/GuildChannel');
 const PermissionOverwrites = require('../structures/PermissionOverwrites');
 const ThreadChannel = require('../structures/ThreadChannel');
-const Collection = require('../util/Collection');
 const { ChannelTypes, ThreadChannelTypes } = require('../util/Constants');
+
+let cacheWarningEmitted = false;
+let storeChannelDeprecationEmitted = false;
 
 /**
  * Manages API methods for GuildChannels and stores their cache.
@@ -15,6 +19,17 @@ const { ChannelTypes, ThreadChannelTypes } = require('../util/Constants');
 class GuildChannelManager extends CachedManager {
   constructor(guild, iterable) {
     super(guild.client, GuildChannel, iterable);
+    const defaultCaching =
+      this._cache.constructor.name === 'Collection' ||
+      ((this._cache.maxSize === undefined || this._cache.maxSize === Infinity) &&
+        (this._cache.sweepFilter === undefined || this._cache.sweepFilter.isDefault));
+    if (!cacheWarningEmitted && !defaultCaching) {
+      cacheWarningEmitted = true;
+      process.emitWarning(
+        `Overriding the cache handling for ${this.constructor.name} is unsupported and breaks functionality.`,
+        'UnsupportedCacheOverwriteWarning',
+      );
+    }
 
     /**
      * The guild this Manager belongs to
@@ -79,19 +94,8 @@ class GuildChannelManager extends CachedManager {
 
   /**
    * Options used to create a new channel in a guild.
-   * @typedef {Object} GuildChannelCreateOptions
-   * @property {string|number} [type='GUILD_TEXT'] The type of the new channel, either `GUILD_TEXT`, `GUILD_VOICE`,
-   * `GUILD_CATEGORY`, `GUILD_NEWS`, `GUILD_STORE`, or `GUILD_STAGE_VOICE`
-   * @property {string} [topic] The topic for the new channel
-   * @property {boolean} [nsfw] Whether the new channel is nsfw
-   * @property {number} [bitrate] Bitrate of the new channel in bits (only voice)
-   * @property {number} [userLimit] Maximum amount of users allowed in the new channel (only voice)
-   * @property {ChannelResolvable} [parent] Parent of the new channel
-   * @property {OverwriteResolvable[]|Collection<Snowflake, OverwriteResolvable>} [permissionOverwrites]
-   * Permission overwrites of the new channel
-   * @property {number} [position] Position of the new channel
-   * @property {number} [rateLimitPerUser] The ratelimit per user for the new channel
-   * @property {string} [reason] Reason for creating the new channel
+   * @typedef {CategoryCreateChannelOptions} GuildChannelCreateOptions
+   * @property {CategoryChannelResolvable} [parent] Parent of the new channel
    */
 
   /**
@@ -118,18 +122,38 @@ class GuildChannelManager extends CachedManager {
    */
   async create(
     name,
-    { type, topic, nsfw, bitrate, userLimit, parent, permissionOverwrites, position, rateLimitPerUser, reason } = {},
+    {
+      type,
+      topic,
+      nsfw,
+      bitrate,
+      userLimit,
+      parent,
+      permissionOverwrites,
+      position,
+      rateLimitPerUser,
+      rtcRegion,
+      reason,
+    } = {},
   ) {
-    if (parent) parent = this.client.channels.resolveId(parent);
-    if (permissionOverwrites) {
-      permissionOverwrites = permissionOverwrites.map(o => PermissionOverwrites.resolve(o, this.guild));
+    parent &&= this.client.channels.resolveId(parent);
+    permissionOverwrites &&= permissionOverwrites.map(o => PermissionOverwrites.resolve(o, this.guild));
+    const intType = typeof type === 'number' ? type : ChannelTypes[type] ?? ChannelTypes.GUILD_TEXT;
+
+    if (intType === ChannelTypes.GUILD_STORE && !storeChannelDeprecationEmitted) {
+      storeChannelDeprecationEmitted = true;
+      process.emitWarning(
+        // eslint-disable-next-line max-len
+        'Creating store channels is deprecated by Discord and will stop working in March 2022. Check the docs for more info.',
+        'DeprecationWarning',
+      );
     }
 
     const data = await this.client.api.guilds(this.guild.id).channels.post({
       data: {
         name,
         topic,
-        type: typeof type === 'number' ? type : ChannelTypes[type] ?? ChannelTypes.GUILD_TEXT,
+        type: intType,
         nsfw,
         bitrate,
         user_limit: userLimit,
@@ -137,6 +161,7 @@ class GuildChannelManager extends CachedManager {
         position,
         permission_overwrites: permissionOverwrites,
         rate_limit_per_user: rateLimitPerUser,
+        rtc_region: rtcRegion,
       },
       reason,
     });
@@ -149,7 +174,7 @@ class GuildChannelManager extends CachedManager {
    * @param {BaseFetchOptions} [options] Additional options for this fetch
    * @returns {Promise<?GuildChannel|Collection<Snowflake, GuildChannel>>}
    * @example
-   * // Fetch all channels from the guild
+   * // Fetch all channels from the guild (excluding threads)
    * message.guild.channels.fetch()
    *   .then(channels => console.log(`There are ${channels.size} channels.`))
    *   .catch(console.error);
@@ -176,6 +201,46 @@ class GuildChannelManager extends CachedManager {
     const channels = new Collection();
     for (const channel of data) channels.set(channel.id, this.client.channels._add(channel, this.guild, { cache }));
     return channels;
+  }
+
+  /**
+   * Batch-updates the guild's channels' positions.
+   * <info>Only one channel's parent can be changed at a time</info>
+   * @param {ChannelPosition[]} channelPositions Channel positions to update
+   * @returns {Promise<Guild>}
+   * @example
+   * guild.channels.setPositions([{ channel: channelId, position: newChannelIndex }])
+   *   .then(guild => console.log(`Updated channel positions for ${guild}`))
+   *   .catch(console.error);
+   */
+  async setPositions(channelPositions) {
+    channelPositions = channelPositions.map(r => ({
+      id: this.client.channels.resolveId(r.channel),
+      position: r.position,
+      lock_permissions: r.lockPermissions,
+      parent_id: typeof r.parent !== 'undefined' ? this.channels.resolveId(r.parent) : undefined,
+    }));
+
+    await this.client.api.guilds(this.guild.id).channels.patch({ data: channelPositions });
+    return this.client.actions.GuildChannelsPositionUpdate.handle({
+      guild_id: this.guild.id,
+      channels: channelPositions,
+    }).guild;
+  }
+
+  /**
+   * Obtains all active thread channels in the guild from Discord
+   * @param {boolean} [cache=true] Whether to cache the fetched data
+   * @returns {Promise<FetchedThreads>}
+   * @example
+   * // Fetch all threads from the guild
+   * message.guild.channels.fetchActiveThreads()
+   *   .then(fetched => console.log(`There are ${fetched.threads.size} threads.`))
+   *   .catch(console.error);
+   */
+  async fetchActiveThreads(cache = true) {
+    const raw = await this.client.api.guilds(this.guild.id).threads.active.get();
+    return ThreadManager._mapThreads(raw, this.client, { guild: this.guild, cache });
   }
 }
 

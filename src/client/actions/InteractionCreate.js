@@ -1,8 +1,13 @@
 'use strict';
 
 const Action = require('./Action');
-const { Events, InteractionTypes, MessageComponentTypes } = require('../../util/Constants');
-const Structures = require('../../util/Structures');
+const AutocompleteInteraction = require('../../structures/AutocompleteInteraction');
+const ButtonInteraction = require('../../structures/ButtonInteraction');
+const CommandInteraction = require('../../structures/CommandInteraction');
+const MessageContextMenuInteraction = require('../../structures/MessageContextMenuInteraction');
+const SelectMenuInteraction = require('../../structures/SelectMenuInteraction');
+const UserContextMenuInteraction = require('../../structures/UserContextMenuInteraction');
+const { Events, InteractionTypes, MessageComponentTypes, ApplicationCommandTypes } = require('../../util/Constants');
 
 let deprecationEmitted = false;
 
@@ -16,15 +21,31 @@ class InteractionCreateAction extends Action {
     let InteractionType;
     switch (data.type) {
       case InteractionTypes.APPLICATION_COMMAND:
-        InteractionType = Structures.get('CommandInteraction');
+        switch (data.data.type) {
+          case ApplicationCommandTypes.CHAT_INPUT:
+            InteractionType = CommandInteraction;
+            break;
+          case ApplicationCommandTypes.USER:
+            InteractionType = UserContextMenuInteraction;
+            break;
+          case ApplicationCommandTypes.MESSAGE:
+            InteractionType = MessageContextMenuInteraction;
+            break;
+          default:
+            client.emit(
+              Events.DEBUG,
+              `[INTERACTION] Received application command interaction with unknown type: ${data.data.type}`,
+            );
+            return;
+        }
         break;
       case InteractionTypes.MESSAGE_COMPONENT:
         switch (data.data.component_type) {
           case MessageComponentTypes.BUTTON:
-            InteractionType = Structures.get('ButtonInteraction');
+            InteractionType = ButtonInteraction;
             break;
           case MessageComponentTypes.SELECT_MENU:
-            InteractionType = Structures.get('SelectMenuInteraction');
+            InteractionType = SelectMenuInteraction;
             break;
           default:
             client.emit(
@@ -33,6 +54,9 @@ class InteractionCreateAction extends Action {
             );
             return;
         }
+        break;
+      case InteractionTypes.APPLICATION_COMMAND_AUTOCOMPLETE:
+        InteractionType = AutocompleteInteraction;
         break;
       default:
         client.emit(Events.DEBUG, `[INTERACTION] Received interaction with unknown type: ${data.type}`);
@@ -52,7 +76,7 @@ class InteractionCreateAction extends Action {
      * Emitted when an interaction is created.
      * @event Client#interaction
      * @param {Interaction} interaction The interaction which was created
-     * @deprecated Use {@link Client#interactionCreate} instead
+     * @deprecated Use {@link Client#event:interactionCreate} instead
      */
     if (client.emit('interaction', interaction) && !deprecationEmitted) {
       deprecationEmitted = true;

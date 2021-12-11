@@ -1,9 +1,9 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const stream = require('stream');
 const fetch = require('node-fetch');
+const fs = require('node:fs');
+const path = require('node:path');
+const stream = require('node:stream');
 const { Error: DiscordError, TypeError } = require('../errors');
 const Invite = require('../structures/Invite');
 
@@ -20,7 +20,7 @@ class DataResolver extends null {
    */
 
   /**
-   * Data that can be resolved to give an template code. This can be:
+   * Data that can be resolved to give a template code. This can be:
    * * A template code
    * * A template URL
    * @typedef {string} GuildTemplateResolvable
@@ -90,7 +90,8 @@ class DataResolver extends null {
    * Data that can be resolved to give a Buffer. This can be:
    * * A Buffer
    * * The path to a local file
-   * * A URL
+   * * A URL <warn>When provided a URL, discord.js will fetch the URL internally in order to create a Buffer.
+   * This can pose a security risk when the URL has not been sanitized</warn>
    * @typedef {string|Buffer} BufferResolvable
    */
 

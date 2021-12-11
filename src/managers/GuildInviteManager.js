@@ -1,9 +1,9 @@
 'use strict';
 
+const { Collection } = require('@discordjs/collection');
 const CachedManager = require('./CachedManager');
 const { Error } = require('../errors');
 const Invite = require('../structures/Invite');
-const Collection = require('../util/Collection');
 const DataResolver = require('../util/DataResolver');
 
 /**
@@ -23,7 +23,7 @@ class GuildInviteManager extends CachedManager {
 
   /**
    * The cache of this Manager
-   * @type {Collection<Snowflake, Invite>}
+   * @type {Collection<string, Invite>}
    * @name GuildInviteManager#cache
    */
 
@@ -36,6 +36,18 @@ class GuildInviteManager extends CachedManager {
    * * An invite code
    * * An invite URL
    * @typedef {string} InviteResolvable
+   */
+
+  /**
+   * Data that can be resolved to a channel that an invite can be created on. This can be:
+   * * TextChannel
+   * * VoiceChannel
+   * * NewsChannel
+   * * StoreChannel
+   * * StageChannel
+   * * Snowflake
+   * @typedef {TextChannel|VoiceChannel|NewsChannel|StoreChannel|StageChannel|Snowflake}
+   * GuildInvitableChannelResolvable
    */
 
   /**
@@ -67,14 +79,15 @@ class GuildInviteManager extends CachedManager {
   /**
    * Options used to fetch all invites from a guild.
    * @typedef {Object} FetchInvitesOptions
-   * @property {GuildChannelResolvable} [channelId] The channel to fetch all invites from
+   * @property {GuildInvitableChannelResolvable} [channelId]
+   * The channel to fetch all invites from
    * @property {boolean} [cache=true] Whether or not to cache the fetched invites
    */
 
   /**
    * Fetches invite(s) from Discord.
    * @param {InviteResolvable|FetchInviteOptions|FetchInvitesOptions} [options] Options for fetching guild invite(s)
-   * @returns {Promise<Invite|Collection<Snowflake, Invite>>}
+   * @returns {Promise<Invite|Collection<string, Invite>>}
    * @example
    * // Fetch all invites from a guild
    * guild.invites.fetch()
@@ -153,7 +166,7 @@ class GuildInviteManager extends CachedManager {
 
   /**
    * Create an invite to the guild from the provided channel.
-   * @param {GuildChannelResolvable} channel The options for creating the invite from a channel.
+   * @param {GuildInvitableChannelResolvable} channel The options for creating the invite from a channel.
    * @param {CreateInviteOptions} [options={}] The options for creating the invite from a channel.
    * @returns {Promise<Invite>}
    * @example

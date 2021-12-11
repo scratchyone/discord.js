@@ -9,8 +9,15 @@ let StoreChannel;
 let TextChannel;
 let ThreadChannel;
 let VoiceChannel;
-const { ChannelTypes, ThreadChannelTypes } = require('../util/Constants');
+const { ChannelTypes, ThreadChannelTypes, VoiceBasedChannelTypes } = require('../util/Constants');
 const SnowflakeUtil = require('../util/SnowflakeUtil');
+
+/**
+ * @type {WeakSet<Channel>}
+ * @private
+ * @internal
+ */
+const deletedChannels = new WeakSet();
 
 /**
  * Represents any channel on Discord.
@@ -21,18 +28,12 @@ class Channel extends Base {
   constructor(client, data, immediatePatch = true) {
     super(client);
 
-    const type = ChannelTypes[data.type];
+    const type = ChannelTypes[data?.type];
     /**
      * The type of the channel
      * @type {ChannelType}
      */
     this.type = type ?? 'UNKNOWN';
-
-    /**
-     * Whether the channel has been deleted
-     * @type {boolean}
-     */
-    this.deleted = false;
 
     if (data && immediatePatch) this._patch(data);
   }
@@ -51,7 +52,7 @@ class Channel extends Base {
    * @readonly
    */
   get createdTimestamp() {
-    return SnowflakeUtil.deconstruct(this.id).timestamp;
+    return SnowflakeUtil.timestampFrom(this.id);
   }
 
   /**
@@ -61,6 +62,19 @@ class Channel extends Base {
    */
   get createdAt() {
     return new Date(this.createdTimestamp);
+  }
+
+  /**
+   * Whether or not the structure has been deleted
+   * @type {boolean}
+   */
+  get deleted() {
+    return deletedChannels.has(this);
+  }
+
+  set deleted(value) {
+    if (value) deletedChannels.add(this);
+    else deletedChannels.delete(this);
   }
 
   /**
@@ -93,11 +107,9 @@ class Channel extends Base {
    *   .then(console.log)
    *   .catch(console.error);
    */
-  delete() {
-    return this.client.api
-      .channels(this.id)
-      .delete()
-      .then(() => this);
+  async delete() {
+    await this.client.api.channels(this.id).delete();
+    return this;
   }
 
   /**
@@ -110,12 +122,19 @@ class Channel extends Base {
   }
 
   /**
-   * Indicates whether this channel is text-based
-   * ({@link TextChannel}, {@link DMChannel}, {@link NewsChannel} or {@link ThreadChannel}).
+   * Indicates whether this channel is {@link TextBasedChannels text-based}.
    * @returns {boolean}
    */
   isText() {
     return 'messages' in this;
+  }
+
+  /**
+   * Indicates whether this channel is {@link BaseGuildVoiceChannel voice-based}.
+   * @returns {boolean}
+   */
+  isVoice() {
+    return VoiceBasedChannelTypes.includes(this.type);
   }
 
   /**
@@ -146,7 +165,7 @@ class Channel extends Base {
         channel = new PartialGroupDMChannel(client, data);
       }
     } else {
-      if (!guild) guild = client.guilds.cache.get(data.guild_id);
+      guild ??= client.guilds.cache.get(data.guild_id);
 
       if (guild || allowUnknownGuild) {
         switch (data.type) {
@@ -193,7 +212,8 @@ class Channel extends Base {
   }
 }
 
-module.exports = Channel;
+exports.Channel = Channel;
+exports.deletedChannels = deletedChannels;
 
 /**
  * @external APIChannel

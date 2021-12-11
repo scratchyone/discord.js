@@ -57,10 +57,10 @@ class Permissions extends BitField {
 
 /**
  * Numeric permission flags. All available properties:
- * * `ADMINISTRATOR` (implicitly has *all* permissions, and bypasses all channel overwrites)
  * * `CREATE_INSTANT_INVITE` (create invitations to the guild)
  * * `KICK_MEMBERS`
  * * `BAN_MEMBERS`
+ * * `ADMINISTRATOR` (implicitly has *all* permissions, and bypasses all channel overwrites)
  * * `MANAGE_CHANNELS` (edit and reorder channels)
  * * `MANAGE_GUILD` (edit the guild information, region, etc.)
  * * `ADD_REACTIONS` (add new reactions to messages)
@@ -91,11 +91,15 @@ class Permissions extends BitField {
  * * `USE_APPLICATION_COMMANDS`
  * * `REQUEST_TO_SPEAK`
  * * `MANAGE_THREADS`
- * * `USE_PUBLIC_THREADS`
- * * `USE_PRIVATE_THREADS`
+ * * `USE_PUBLIC_THREADS` (deprecated)
+ * * `CREATE_PUBLIC_THREADS`
+ * * `USE_PRIVATE_THREADS` (deprecated)
+ * * `CREATE_PRIVATE_THREADS`
  * * `USE_EXTERNAL_STICKERS` (use stickers from different guilds)
+ * * `SEND_MESSAGES_IN_THREADS`
+ * * `START_EMBEDDED_ACTIVITIES`
  * @type {Object<string, bigint>}
- * @see {@link https://discord.com/developers/docs/topics/permissions}
+ * @see {@link https://discord.com/developers/docs/topics/permissions#permissions-bitwise-permission-flags}
  */
 Permissions.FLAGS = {
   CREATE_INSTANT_INVITE: 1n << 0n,
@@ -132,9 +136,14 @@ Permissions.FLAGS = {
   USE_APPLICATION_COMMANDS: 1n << 31n,
   REQUEST_TO_SPEAK: 1n << 32n,
   MANAGE_THREADS: 1n << 34n,
+  // TODO: Remove deprecated USE_*_THREADS flags in v14
   USE_PUBLIC_THREADS: 1n << 35n,
+  CREATE_PUBLIC_THREADS: 1n << 35n,
   USE_PRIVATE_THREADS: 1n << 36n,
+  CREATE_PRIVATE_THREADS: 1n << 36n,
   USE_EXTERNAL_STICKERS: 1n << 37n,
+  SEND_MESSAGES_IN_THREADS: 1n << 38n,
+  START_EMBEDDED_ACTIVITIES: 1n << 39n,
 };
 
 /**

@@ -1,12 +1,15 @@
 'use strict';
 
-const { parse } = require('path');
+const { Collection } = require('@discordjs/collection');
 const fetch = require('node-fetch');
+const { parse } = require('node:path');
 const { Colors, Endpoints } = require('./Constants');
 const Options = require('./Options');
 const { Error: DiscordError, RangeError, TypeError } = require('../errors');
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const isObject = d => typeof d === 'object' && d !== null;
+
+let deprecationEmittedForRemoveMentions = false;
 
 /**
  * Contains various general-purpose utility methods.
@@ -38,9 +41,9 @@ class Util extends null {
       const valueOf = elemIsObj && typeof element.valueOf === 'function' ? element.valueOf() : null;
 
       // If it's a Collection, make the array of keys
-      if (element instanceof require('./Collection')) out[newProp] = Array.from(element.keys());
+      if (element instanceof Collection) out[newProp] = Array.from(element.keys());
       // If the valueOf is a Collection, use its array of keys
-      else if (valueOf instanceof require('./Collection')) out[newProp] = Array.from(valueOf.keys());
+      else if (valueOf instanceof Collection) out[newProp] = Array.from(valueOf.keys());
       // If it's an array, flatten each element
       else if (Array.isArray(element)) out[newProp] = element.map(e => Util.flatten(e));
       // If it's an object with a primitive `valueOf`, use that value
@@ -56,7 +59,7 @@ class Util extends null {
    * Options for splitting a message.
    * @typedef {Object} SplitOptions
    * @property {number} [maxLength=2000] Maximum character length per message piece
-   * @property {string|string[]|RegExp|RegExp[]} [char='\n'] Character(s) or Regex(s) to split the message with,
+   * @property {string|string[]|RegExp|RegExp[]} [char='\n'] Character(s) or Regex(es) to split the message with,
    * an array can be used to split multiple times
    * @property {string} [prepend=''] Text to prepend to every piece except the first
    * @property {string} [append=''] Text to append to every piece except the last
@@ -68,8 +71,8 @@ class Util extends null {
    * @param {SplitOptions} [options] Options controlling the behavior of the split
    * @returns {string[]}
    */
-  static splitMessage(text, { maxLength = 2000, char = '\n', prepend = '', append = '' } = {}) {
-    text = Util.verifyString(text, RangeError, 'MESSAGE_CONTENT_TYPE', false);
+  static splitMessage(text, { maxLength = 2_000, char = '\n', prepend = '', append = '' } = {}) {
+    text = Util.verifyString(text);
     if (text.length <= maxLength) return [text];
     let splitText = [text];
     if (Array.isArray(char)) {
@@ -180,7 +183,7 @@ class Util extends null {
    * @returns {string}
    */
   static escapeCodeBlock(text) {
-    return text.replace(/```/g, '\\`\\`\\`');
+    return text.replaceAll('```', '\\`\\`\\`');
   }
 
   /**
@@ -242,7 +245,7 @@ class Util extends null {
    * @returns {string}
    */
   static escapeStrikethrough(text) {
-    return text.replace(/~~/g, '\\~\\~');
+    return text.replaceAll('~~', '\\~\\~');
   }
 
   /**
@@ -251,28 +254,34 @@ class Util extends null {
    * @returns {string}
    */
   static escapeSpoiler(text) {
-    return text.replace(/\|\|/g, '\\|\\|');
+    return text.replaceAll('||', '\\|\\|');
   }
+
+  /**
+   * @typedef {Object} FetchRecommendedShardsOptions
+   * @property {number} [guildsPerShard=1000] Number of guilds assigned per shard
+   * @property {number} [multipleOf=1] The multiple the shard count should round up to. (16 for large bot sharding)
+   */
 
   /**
    * Gets the recommended shard count from Discord.
    * @param {string} token Discord auth token
-   * @param {number} [guildsPerShard=1000] Number of guilds per shard
+   * @param {FetchRecommendedShardsOptions} [options] Options for fetching the recommended shard count
    * @returns {Promise<number>} The recommended number of shards
    */
-  static fetchRecommendedShards(token, guildsPerShard = 1000) {
+  static async fetchRecommendedShards(token, { guildsPerShard = 1_000, multipleOf = 1 } = {}) {
     if (!token) throw new DiscordError('TOKEN_MISSING');
     const defaults = Options.createDefault();
-    return fetch(`${defaults.http.api}/v${defaults.http.version}${Endpoints.botGateway}`, {
+    const response = await fetch(`${defaults.http.api}/v${defaults.http.version}${Endpoints.botGateway}`, {
       method: 'GET',
       headers: { Authorization: `Bot ${token.replace(/^Bot\s*/i, '')}` },
-    })
-      .then(res => {
-        if (res.ok) return res.json();
-        if (res.status === 401) throw new DiscordError('TOKEN_INVALID');
-        throw res;
-      })
-      .then(data => data.shards * (1000 / guildsPerShard));
+    });
+    if (!response.ok) {
+      if (response.status === 401) throw new DiscordError('TOKEN_INVALID');
+      throw response;
+    }
+    const { shards } = await response.json();
+    return Math.ceil((shards * (1_000 / guildsPerShard)) / multipleOf) * multipleOf;
   }
 
   /**
@@ -302,7 +311,7 @@ class Util extends null {
     if (typeof emoji === 'string') return /^\d{17,19}$/.test(emoji) ? { id: emoji } : Util.parseEmoji(emoji);
     const { id, name, animated } = emoji;
     if (!id && !name) return null;
-    return { id, name, animated };
+    return { id, name, animated: Boolean(animated) };
   }
 
   /**
@@ -463,22 +472,22 @@ class Util extends null {
     }
 
     if (color < 0 || color > 0xffffff) throw new RangeError('COLOR_RANGE');
-    else if (color && isNaN(color)) throw new TypeError('COLOR_CONVERT');
+    else if (Number.isNaN(color)) throw new TypeError('COLOR_CONVERT');
 
     return color;
   }
 
   /**
    * Sorts by Discord's position and id.
-   * @param  {Collection} collection Collection of objects to sort
+   * @param {Collection} collection Collection of objects to sort
    * @returns {Collection}
    */
   static discordSort(collection) {
+    const isGuildChannel = collection.first() instanceof GuildChannel;
     return collection.sorted(
-      (a, b) =>
-        a.rawPosition - b.rawPosition ||
-        parseInt(b.id.slice(0, -10)) - parseInt(a.id.slice(0, -10)) ||
-        parseInt(b.id.slice(10)) - parseInt(a.id.slice(10)),
+      isGuildChannel
+        ? (a, b) => a.rawPosition - b.rawPosition || Number(BigInt(a.id) - BigInt(b.id))
+        : (a, b) => a.rawPosition - b.rawPosition || Number(BigInt(b.id) - BigInt(a.id)),
     );
   }
 
@@ -493,11 +502,12 @@ class Util extends null {
    * @returns {Promise<Channel[]|Role[]>} Updated item list, with `id` and `position` properties
    * @private
    */
-  static setPosition(item, position, relative, sorted, route, reason) {
-    let updatedItems = sorted.array();
+  static async setPosition(item, position, relative, sorted, route, reason) {
+    let updatedItems = [...sorted.values()];
     Util.moveElementInArray(updatedItems, item, position, relative);
     updatedItems = updatedItems.map((r, i) => ({ id: r.id, position: i }));
-    return route.patch({ data: updatedItems, reason }).then(() => updatedItems);
+    await route.patch({ data: updatedItems, reason });
+    return updatedItems;
   }
 
   /**
@@ -513,69 +523,30 @@ class Util extends null {
   }
 
   /**
-   * Transforms a snowflake from a decimal string to a bit string.
-   * @param  {Snowflake} num Snowflake to be transformed
-   * @returns {string}
-   * @private
-   */
-  static idToBinary(num) {
-    let bin = '';
-    let high = parseInt(num.slice(0, -10)) || 0;
-    let low = parseInt(num.slice(-10));
-    while (low > 0 || high > 0) {
-      bin = String(low & 1) + bin;
-      low = Math.floor(low / 2);
-      if (high > 0) {
-        low += 5000000000 * (high % 2);
-        high = Math.floor(high / 2);
-      }
-    }
-    return bin;
-  }
-
-  /**
-   * Transforms a snowflake from a bit string to a decimal string.
-   * @param  {string} num Bit string to be transformed
-   * @returns {Snowflake}
-   * @private
-   */
-  static binaryToId(num) {
-    let dec = '';
-
-    while (num.length > 50) {
-      const high = parseInt(num.slice(0, -32), 2);
-      const low = parseInt((high % 10).toString(2) + num.slice(-32), 2);
-
-      dec = (low % 10).toString() + dec;
-      num =
-        Math.floor(high / 10).toString(2) +
-        Math.floor(low / 10)
-          .toString(2)
-          .padStart(32, '0');
-    }
-
-    num = parseInt(num, 2);
-    while (num > 0) {
-      dec = (num % 10).toString() + dec;
-      num = Math.floor(num / 10);
-    }
-
-    return dec;
-  }
-
-  /**
    * Breaks user, role and everyone/here mentions by adding a zero width space after every @ character
    * @param {string} str The string to sanitize
    * @returns {string}
+   * @deprecated Use {@link BaseMessageOptions#allowedMentions} instead.
    */
   static removeMentions(str) {
-    return str.replace(/@/g, '@\u200b');
+    if (!deprecationEmittedForRemoveMentions) {
+      process.emitWarning(
+        'The Util.removeMentions method is deprecated. Use MessageOptions#allowedMentions instead.',
+        'DeprecationWarning',
+      );
+
+      deprecationEmittedForRemoveMentions = true;
+    }
+
+    return str.replaceAll('@', '@\u200b');
   }
 
   /**
    * The content to have all mentions replaced by the equivalent text.
+   * <warn>When {@link Util.removeMentions} is removed, this method will no longer sanitize mentions.
+   * Use {@link BaseMessageOptions#allowedMentions} instead to prevent mentions when sending a message.</warn>
    * @param {string} str The string to be converted
-   * @param {Channel} channel The channel the string was sent in
+   * @param {TextBasedChannels} channel The channel the string was sent in
    * @returns {string}
    */
   static cleanContent(str, channel) {
@@ -608,25 +579,31 @@ class Util extends null {
   }
 
   /**
-   * The content to put in a codeblock with all codeblock fences replaced by the equivalent backticks.
+   * The content to put in a code block with all code block fences replaced by the equivalent backticks.
    * @param {string} text The string to be converted
    * @returns {string}
    */
   static cleanCodeBlockContent(text) {
-    return text.replace(/```/g, '`\u200b``');
+    return text.replaceAll('```', '`\u200b``');
   }
 
   /**
-   * Creates a Promise that resolves after a specified duration.
-   * @param {number} ms How long to wait before resolving (in milliseconds)
-   * @returns {Promise<void>}
-   * @private
+   * Creates a sweep filter that sweeps archived threads
+   * @param {number} [lifetime=14400] How long a thread has to be archived to be valid for sweeping
+   * @returns {SweepFilter}
    */
-  static delayFor(ms) {
-    return new Promise(resolve => {
-      setTimeout(resolve, ms);
+  static archivedThreadSweepFilter(lifetime = 14400) {
+    const filter = require('./LimitedCollection').filterByLifetime({
+      lifetime,
+      getComparisonTimestamp: e => e.archiveTimestamp,
+      excludeFromSweep: e => !e.archived,
     });
+    filter.isDefault = true;
+    return filter;
   }
 }
 
 module.exports = Util;
+
+// Fixes Circular
+const GuildChannel = require('../structures/GuildChannel');
